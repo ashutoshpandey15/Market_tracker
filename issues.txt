@@ -1,0 +1,15 @@
+1] watchlist contains the stocks that i have saved and it show sto every user.
+what i want is to store the watchlist of every user that will be different and when they enter /watchlist they can see their own watchlist.
+
+2]During comparison
+[25-03-2026 12:54] Shinigami: /compare TCS.NS ADANIGREEN.NS
+[25-03-2026 12:55] Market Price Tracker: 📊 Comparing TCS.NS vs ADANIGREEN.NS...
+[25-03-2026 12:55] Market Price Tracker: ⚠️ Not enough price history for one or both tickers.
+At least 2 days of data needed. Check back tomorrow!
+This error occurs, this means that we are not able to fetch and store enough data from free api for market price history. or something else ?
+
+
+3] The below error of stats
+[25-03-2026 12:56] Shinigami: /stats
+[25-03-2026 12:56] Market Price Tracker: ❌ Failed to fetch stats: Can't parse entities: can't find end of the entity starting at byte offset 156.
+
