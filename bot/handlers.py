@@ -1360,68 +1360,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── Fuzzy search — user typed a name like "reliance" ──
-    await update.message.reply_text(
-        f"🔍 Searching for *{query}*...",
-        parse_mode="Markdown"
-    )
-
-    try:
-        import yfinance as yf
-        search_results = yf.Search(query, max_results=6).quotes
-    except Exception as e:
-        logger.error(f"yfinance search failed: {e}")
-        search_results = []
-
-    if not search_results:
-        await update.message.reply_text(
-            f"❌ No results found for *{query}*.\n\n"
-            f"Try using the exact ticker:\n"
-            f"`/add RELIANCE.NS` for NSE\n"
-            f"`/add RELIANCE.BO` for BSE",
-            parse_mode="Markdown"
-        )
-        return
-
-    # Filter to Indian stocks (.NS, .BO) and limit to 6
-    indian = [
-        r for r in search_results
-        if r.get("symbol", "").endswith((".NS", ".BO"))
-    ][:6]
-
-    # If no Indian results, show all results
-    if not indian:
-        indian = search_results[:6]
-
-    if not indian:
-        await update.message.reply_text(
-            f"❌ No Indian stocks found for *{query}*.\n"
-            f"Try `/add RELIANCE.NS` directly.",
-            parse_mode="Markdown"
-        )
-        return
-
-    # Build inline buttons — one per result
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-    buttons = []
-    for r in indian:
-        symbol      = r.get("symbol", "")
-        name        = r.get("shortname") or r.get("longname") or symbol
-        exchange    = "NSE" if symbol.endswith(".NS") else \
-                      "BSE" if symbol.endswith(".BO") else "INT"
-        button_text = f"{symbol} — {exchange}"
-        buttons.append([
-            InlineKeyboardButton(
-                button_text,
-                callback_data=f"addticker:{symbol}"
-            )
-        ])
-
-    await update.message.reply_text(
-        f"🔍 *Results for '{query}':*\n\nTap to add:",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
+    await _fuzzy_search(update, query, action="addticker")
 
 
 async def _add_ticker_directly(update, ticker, chat_id):
@@ -1480,6 +1419,58 @@ async def _add_ticker_directly(update, ticker, chat_id):
         )
 
 
+async def _fuzzy_search(update, query: str, action: str):
+    """
+    Search yfinance for `query` and show inline buttons with callback_data = f"{action}:{symbol}".
+    Reused by /price, /remove, /graph, /alert, /add.
+    """
+    await update.message.reply_text(
+        f"🔍 Searching for *{query}*...",
+        parse_mode="Markdown"
+    )
+
+    try:
+        search_results = yf.Search(query, max_results=6).quotes
+    except Exception as e:
+        logger.error(f"yfinance search failed: {e}")
+        search_results = []
+
+    if not search_results:
+        await update.message.reply_text(
+            f"❌ No results found for *{query}*.\n\n"
+            f"Try using the exact ticker:\n"
+            f"`RELIANCE.NS` for NSE\n"
+            f"`RELIANCE.BO` for BSE",
+            parse_mode="Markdown"
+        )
+        return
+
+    indian = [
+        r for r in search_results
+        if r.get("symbol", "").endswith((".NS", ".BO"))
+    ][:6]
+    if not indian:
+        indian = search_results[:6]
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    buttons = []
+    for r in indian:
+        symbol   = r.get("symbol", "")
+        exchange = "NSE" if symbol.endswith(".NS") else \
+                   "BSE" if symbol.endswith(".BO") else "INT"
+        buttons.append([
+            InlineKeyboardButton(
+                f"{symbol} — {exchange}",
+                callback_data=f"{action}:{symbol}"
+            )
+        ])
+
+    await update.message.reply_text(
+        f"🔍 *Results for '{query}':*\n\nTap to select:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 
 
@@ -1487,19 +1478,25 @@ async def _add_ticker_directly(update, ticker, chat_id):
 async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Remove a stock from the watchlist.
-    Usage: /remove RELIANCE.NS
+    Usage: /remove RELIANCE.NS  or  /remove reliance  (fuzzy search)
     """
     _track(update)
     chat_id = str(update.effective_chat.id)
     if not context.args:
         await update.message.reply_text(
-            "⚠️ Please provide a ticker.\n"
-            "Example: `/remove RELIANCE.NS`",
+            "⚠️ Please provide a ticker or name.\n"
+            "Example: `/remove RELIANCE.NS` or `/remove reliance`",
             parse_mode="Markdown"
         )
         return
 
-    ticker = context.args[0].upper().strip()
+    query  = context.args[0].strip()
+    ticker = query.upper()
+
+    # Fuzzy search if name given (no . or _)
+    if "." not in ticker and "_" not in ticker:
+        await _fuzzy_search(update, query, action="remove")
+        return
 
     # Check it's actually in the user's watchlist first
     watchlist = get_watchlist(chat_id)
@@ -1684,6 +1681,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _add_ticker_directly(update, ticker, chat_id)
         return
 
+    # ── Price button (from fuzzy search) ──
+    if action == "price":
+        result = get_price(ticker)
+        if not result:
+            await query.message.reply_text(
+                f"❌ Could not fetch price for `{ticker}`.",
+                parse_mode="Markdown"
+            )
+            return
+        await query.message.reply_text(
+            f"💰 *{ticker}*\n\n"
+            f"Price:    *₹{result['price']}* {result['unit']}\n"
+            f"Exchange: {result['exchange']}",
+            parse_mode="Markdown"
+        )
+        return
+
     # ── Graph button ──
     if action == "graph":
         await query.message.reply_text(
@@ -1723,7 +1737,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Remove button ──
     elif action == "remove":
-        from data.database import remove_symbol
+        watchlist = get_watchlist(chat_id)
+        if ticker not in watchlist:
+            await query.answer(
+                f"{ticker} is not in your watchlist.", show_alert=True
+            )
+            return
         remove_symbol(ticker, chat_id)
         await query.edit_message_text(
             f"🗑 {ticker} removed from your watchlist."
@@ -1745,18 +1764,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Get the current price of any stock instantly.
-    Usage: /price TCS.NS
+    Usage: /price TCS.NS  or  /price tata  (fuzzy search)
     """
     _track(update)
     if not context.args:
         await update.message.reply_text(
-            "⚠️ Please provide a ticker.\n"
-            "Example: `/price TCS.NS`",
+            "⚠️ Please provide a ticker or name.\n"
+            "Example: `/price TCS.NS` or `/price tata`",
             parse_mode="Markdown"
         )
         return
 
-    ticker = context.args[0].upper().strip()
+    query  = context.args[0].strip()
+    ticker = query.upper()
+
+    # Fuzzy search if name given (no . or _)
+    if "." not in ticker and "_" not in ticker:
+        await _fuzzy_search(update, query, action="price")
+        return
+
     result = get_price(ticker)
 
     if not result:
@@ -1783,9 +1809,17 @@ async def alert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
       /alert RELIANCE.NS drop 2.0
       /alert RELIANCE.NS rise 3.0
       /alert RELIANCE.NS both 2.0
+      /alert reliance          → fuzzy search, then shows alert instructions
     """
     _track(update)
     chat_id = str(update.effective_chat.id)
+
+    # Fuzzy search if only 1 arg given and it looks like a name (no . or _)
+    if len(context.args) == 1:
+        arg = context.args[0].strip()
+        if "." not in arg.upper() and "_" not in arg.upper():
+            await _fuzzy_search(update, arg, action="alert")
+            return
 
     if len(context.args) < 3:
         await update.message.reply_text(
@@ -1859,16 +1893,17 @@ async def graph_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     /graph RELIANCE.NS       → single stock chart
     /graph GOLD_24K          → single karat chart
     /graph GOLD compare      → 24K vs 22K comparison chart
+    /graph reliance          → fuzzy search, then chart
     """
     _track(update)
     chat_id = str(update.effective_chat.id)
     if not context.args:
         await update.message.reply_text(
-            "⚠️ Please provide a ticker.\n"
+            "⚠️ Please provide a ticker or name.\n"
             "Examples:\n"
             "`/graph RELIANCE.NS`\n"
             "`/graph GOLD_24K`\n"
-            "`/graph GOLD compare`",
+            "`/graph reliance`",
             parse_mode="Markdown"
         )
         return
@@ -1877,7 +1912,13 @@ async def graph_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from core.graph import generate_price_chart, generate_gold_comparison_chart
     import os
 
-    ticker = context.args[0].upper().strip()
+    query  = context.args[0].strip()
+    ticker = query.upper()
+
+    # Fuzzy search if name given (no . or _), but not the special GOLD keyword
+    if "." not in ticker and "_" not in ticker and ticker != "GOLD":
+        await _fuzzy_search(update, query, action="graph")
+        return
 
     # ── Special case: /graph GOLD compare ──
     if ticker == "GOLD" and len(context.args) > 1 and context.args[1].lower() == "compare":
