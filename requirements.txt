@@ -1,0 +1,16 @@
+python-telegram-bot==20.7
+httpx==0.25.2
+httpcore==0.18.0
+supabase>=2.3.0,<3
+gotrue>=2.1.0,<3
+postgrest>=0.15.0
+storage3>=0.7.0
+supafunc>=0.4.0
+realtime>=1.0.2,<2
+yfinance>=0.2.40
+matplotlib==3.8.2
+numpy==1.26.4
+APScheduler>=3.10.0,<4
+pytz
+requests
+python-dotenv
