@@ -6,3 +6,4 @@ data/market_bot.db
 logs/
 *.log
 .claudeignore
+.claude/
