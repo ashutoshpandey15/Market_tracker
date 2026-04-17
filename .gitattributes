@@ -1,0 +1,4 @@
+* text=auto eol=lf
+requirements.txt text eol=lf working-tree-encoding=UTF-8
+Procfile text eol=lf
+runtime.txt text eol=lf
