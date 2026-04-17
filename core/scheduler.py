@@ -307,7 +307,7 @@ def send_news_update(label: str):
         market_message = f"📰 *{label} Market News*\n\n_No news available right now._"
 
     # ── Part 2: Per stock news ──
-    watchlist = get_watchlist()
+    watchlist = get_all_watchlist_symbols()
     stock_messages = []
 
     # Only fetch news for actual stocks, not gold
@@ -475,6 +475,9 @@ def start_scheduler() -> BackgroundScheduler:
     logger.info("  Alert Reset — 9:00 AM IST daily")
     logger.info("  News    — 9:00 AM and 4:00 PM IST daily")
 
-    seed_price_history()
+    # Seed price history in a background thread so it doesn't block bot startup
+    import threading
+    threading.Thread(target=seed_price_history, daemon=True, name="seed-price-history").start()
+    logger.info("Price history seeding started in background ✅")
 
     return scheduler
