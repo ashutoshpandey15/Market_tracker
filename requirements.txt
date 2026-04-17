@@ -13,3 +13,4 @@ APScheduler>=3.10.0,<4
 pytz
 requests
 python-dotenv
+websockets>=12.0
